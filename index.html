@@ -3,235 +3,156 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Survey App PRO</title>
+<title>Survey Enterprise PRO MAX</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-body {
-    font-family: Arial;
-    background:#020617;
-    color:#00ffcc;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    min-height:100vh;
-}
-.container {
-    background:#000;
-    padding:20px;
-    border-radius:12px;
-    width:520px;
-    box-shadow:0 0 25px #00ffcc;
-}
-h2 {text-align:center;}
-select,input,button {
-    width:100%;
-    padding:10px;
-    margin:5px 0;
-    border-radius:6px;
-    border:none;
-}
-input {
-    background:#020617;
-    color:#00ffcc;
-    border:1px solid #00ffcc;
-}
-button {
-    background:#00ffcc;
-    color:#000;
-    font-weight:bold;
-    cursor:pointer;
-}
-.result {
-    margin-top:10px;
-    padding:10px;
-    border:1px solid #00ffcc;
-}
-canvas {
-    background:#001018;
-    margin-top:10px;
-}
+body {margin:0; font-family:Arial; display:flex; height:100vh;}
+.sidebar {width:260px; background:#020617; color:#00ffcc; padding:15px;}
+.sidebar button {width:100%; padding:10px; margin:5px 0; background:#00ffcc; border:none; font-weight:bold;}
+.main {flex:1; background:#0f172a; padding:15px; color:#fff;}
+input {width:100%; padding:8px; margin:5px 0;}
+#map {height:400px; margin-top:10px;}
+.result {background:#000; padding:10px; margin-top:10px;}
 </style>
 </head>
-
 <body>
 
-<div class="container">
-<h2>SURVEY APP PRO</h2>
+<div class="sidebar">
+<h3>Survey PRO MAX</h3>
+<button onclick="setMode('jarak')">Jarak & Azimuth</button>
+<button onclick="setMode('rec')">REC</button>
+<button onclick="setMode('sudut')">Sudut Segitiga</button>
+<button onclick="setMode('resection')">Resection</button>
+<button onclick="setMode('offside')">Offside</button>
+<button onclick="setMode('pancang')">Pancang</button>
+<button onclick="setMode('nav')">Navigasi</button>
+<button onclick="setMode('gps')">GPS + Kompas</button>
+</div>
 
-<input type="file" id="file" accept=".csv">
-<button onclick="loadCSV()">IMPORT CSV</button>
+<div class="main">
+<h3 id="title">Mode</h3>
 
-<select id="menu" onchange="renderForm()">
-<option value="1">Jarak & Azimuth</option>
-<option value="2">Koordinat (REC)</option>
-<option value="5">Sudut Segitiga</option>
-<option value="6">Resection</option>
-<option value="7">Offside</option>
-<option value="8">Pancang Laut</option>
-<option value="9">Navigasi Single</option>
-<option value="10">Navigasi Multi</option>
-</select>
-
-<div id="form"></div>
+<input id="n1" placeholder="N1 / Lat">
+<input id="e1" placeholder="E1 / Lon">
+<input id="n2" placeholder="N2 / Target Lat">
+<input id="e2" placeholder="E2 / Target Lon">
+<input id="extra" placeholder="Extra (jarak/sudut)">
 
 <button onclick="hitung()">HITUNG</button>
-<button onclick="startTracking()">START</button>
-<button onclick="stopTracking()">STOP</button>
+<button onclick="startGPS()">START GPS</button>
+<button onclick="stopGPS()">STOP</button>
 
 <div class="result" id="output"></div>
-<canvas id="map" width="450" height="300"></canvas>
-
+<div id="map"></div>
 </div>
 
 <script>
+let mode='jarak'
+function setMode(m){mode=m; title.innerHTML="Mode: "+m}
 
-// ================= BASIC =================
-function degToRad(d){ return d*Math.PI/180 }
-function radToDeg(r){ return r*180/Math.PI }
+let map=L.map('map').setView([-6.2,106.8],13)
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)
+let mUser,mTarget
 
-// ================= CSV =================
-let points=[], currentIndex=0, tracking=null
-
-function loadCSV(){
-let file=document.getElementById('file').files[0]
-let reader=new FileReader()
-reader.onload=e=>{
-let lines=e.target.result.split("\n")
-points=[]
-for(let i=1;i<lines.length;i++){
-let [n,e]=lines[i].split(",")
-if(n && e) points.push({n:+n, e:+e})
-}
-alert("Loaded "+points.length+" titik")
-}
-reader.readAsText(file)
+function updateMap(lat,lon,tlat,tlon){
+if(mUser) map.removeLayer(mUser)
+if(mTarget) map.removeLayer(mTarget)
+mUser=L.marker([lat,lon]).addTo(map)
+mTarget=L.marker([tlat,tlon]).addTo(map)
 }
 
-// ================= FORM =================
-function renderForm(){
-let m=menu.value
-if(m==1) form.innerHTML=`<input id=x1 placeholder="E1"><input id=y1 placeholder="N1"><input id=x2 placeholder="E2"><input id=y2 placeholder="N2">`
-if(m==2) form.innerHTML=`<input id=jarak placeholder="Jarak"><input id=az placeholder="Azimuth">`
-if(m==5) form.innerHTML=`<input id=a placeholder="Left"><input id=b placeholder="Right"><input id=c placeholder="Front">`
-if(m==6) form.innerHTML=`<input id=e1><input id=n1><input id=e2><input id=n2><input id=d1><input id=d2>`
-if(m==7) form.innerHTML=`<input id=az><input id=ch><input id=of>`
-if(m==8) form.innerHTML=`<input id=na><input id=ea><input id=nt><input id=et><input id=radius>`
-if(m==9 || m==10) form.innerHTML=`<input id=na><input id=ea><input id=nt><input id=et><input id=radius>`
-}
+function degToRad(d){return d*Math.PI/180}
+function radToDeg(r){return r*180/Math.PI}
 
-// ================= HITUNG =================
 function hitung(){
-let m=menu.value
+let N1=+n1.value,E1=+e1.value,N2=+n2.value,E2=+e2.value
+let dx=E2-E1, dy=N2-N1
 
-if(m==1){
-let dx=x2.value-x1.value
-let dy=y2.value-y1.value
+if(mode=='jarak'){
 let d=Math.sqrt(dx*dx+dy*dy)
-let az=radToDeg(Math.atan2(dx,dy))
-if(az<0) az+=360
-output.innerHTML=`Jarak ${d.toFixed(3)} m<br>Azimuth ${az.toFixed(3)}°`
+let az=radToDeg(Math.atan2(dx,dy)); if(az<0) az+=360
+output.innerHTML=`Jarak ${d.toFixed(3)}<br>AZ ${az.toFixed(3)}`
 }
 
-if(m==2){
-let d=jarak.value
-let az=document.getElementById('az').value
+if(mode=='rec'){
+let d=N2, az=E2
 let dx=d*Math.sin(degToRad(az))
 let dy=d*Math.cos(degToRad(az))
-output.innerHTML=`ΔE ${dx.toFixed(3)}<br>ΔN ${dy.toFixed(3)}`
+output.innerHTML=`ΔE ${dx.toFixed(3)} ΔN ${dy.toFixed(3)}`
 }
 
-if(m==5){
-let A=a.value,B=b.value,C=c.value
+if(mode=='sudut'){
+let A=N1,B=E1,C=N2
 let ang=Math.acos((A*A+B*B-C*C)/(2*A*B))
-output.innerHTML=`Sudut ${radToDeg(ang).toFixed(3)}°`
+output.innerHTML=`Sudut ${radToDeg(ang).toFixed(3)}`
 }
 
-if(m==6){
-let A=e1.value,B=n1.value,C=e2.value,D=n2.value,E=d1.value,F=d2.value
-let dx=C-A,dy=D-B
-let G=Math.sqrt(dx*dx+dy*dy)
+if(mode=='resection'){
+let d=Math.sqrt(dx*dx+dy*dy)
+output.innerHTML=`Approx posisi ${d.toFixed(2)}`
+}
+
+if(mode=='offside'){
+let off=N2, az=E2
+let dx=off*Math.sin(degToRad(az))
+let dy=off*Math.cos(degToRad(az))
+output.innerHTML=`Offset ${(E1+dx).toFixed(3)}, ${(N1+dy).toFixed(3)}`
+}
+
+if(mode=='pancang'){
+output.innerHTML=`ΔN ${(N2-N1)} ΔE ${(E2-E1)}`
+}
+
+if(mode=='nav'){
+let d=Math.sqrt(dx*dx+dy*dy)
 let az=radToDeg(Math.atan2(dx,dy))
-let H=Math.acos((G*G+E*E-F*F)/(2*G*E))
-let I=az+radToDeg(H)
-let dx2=E*Math.sin(degToRad(I))
-let dy2=E*Math.cos(degToRad(I))
-output.innerHTML=`E3 ${(A+dx2).toFixed(3)}<br>N3 ${(B+dy2).toFixed(3)}`
-}
-
-if(m==7){
-let azv=az.value,d=ch.value,ofv=of.value
-let ang=Math.atan(ofv/d)
-let dist=Math.sqrt(d*d+ofv*ofv)
-let dx=dist*Math.sin(degToRad(azv)+ang)
-let dy=dist*Math.cos(degToRad(azv)+ang)
-output.innerHTML=`ΔE ${dx.toFixed(3)}<br>ΔN ${dy.toFixed(3)}`
-}
-
-if(m==8){
-output.innerHTML=`ΔN ${nt.value-na.value}<br>ΔE ${et.value-ea.value}`
-}
-
-if(m==9){
-navSingle()
+output.innerHTML=`Jarak ${d.toFixed(2)} AZ ${az.toFixed(2)}`
 }
 }
 
-// ================= NAVIGASI =================
-function navSingle(){
-let A=+na.value,B=+ea.value,C=+nt.value,D=+et.value,R=+radius.value
-let dx=C-A,dy=D-B
-let dist=Math.sqrt(dx*dx+dy*dy)
-let az=radToDeg(Math.atan2(dx,dy))
-output.innerHTML=`Jarak ${dist.toFixed(3)} m<br>AZ ${az.toFixed(3)}°`
-draw(A,B,C,D,R)
+// GPS + KOMPA S
+let watchID=null
+let heading=0
+
+window.addEventListener("deviceorientation", e=>{
+if(e.alpha!=null) heading=360-e.alpha
+})
+
+function startGPS(){
+watchID=navigator.geolocation.watchPosition(updateGPS)
 }
 
-// ================= TRACKING =================
-function startTracking(){
-if(points.length==0){alert("Import CSV dulu"); return}
-tracking=setInterval(update,1000)
+function stopGPS(){navigator.geolocation.clearWatch(watchID)}
+
+function updateGPS(pos){
+let lat=pos.coords.latitude
+let lon=pos.coords.longitude
+let tlat=+n2.value, tlon=+e2.value
+
+let dLat=degToRad(tlat-lat)
+let dLon=degToRad(tlon-lon)
+let a=Math.sin(dLat/2)**2+Math.cos(degToRad(lat))*Math.cos(degToRad(tlat))*Math.sin(dLon/2)**2
+let dist=6371000*(2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)))
+
+let y=Math.sin(dLon)*Math.cos(degToRad(tlat))
+let x=Math.cos(degToRad(lat))*Math.sin(degToRad(tlat))-Math.sin(degToRad(lat))*Math.cos(degToRad(tlat))*Math.cos(dLon)
+let az=radToDeg(Math.atan2(y,x)); if(az<0) az+=360
+
+let diff=az-heading
+
+let arah="MAJU"
+if(diff>20) arah="KANAN "+(dist*Math.sin(degToRad(diff))).toFixed(2)+" m"
+if(diff<-20) arah="KIRI "+(dist*Math.sin(degToRad(-diff))).toFixed(2)+" m"
+if(Math.abs(diff)<20) arah="MAJU "+dist.toFixed(2)+" m"
+
+output.innerHTML=`GPS ${lat.toFixed(6)},${lon.toFixed(6)}<br>Heading ${heading.toFixed(1)}°<br>Target AZ ${az.toFixed(1)}°<br><b>${arah}</b>`
+
+updateMap(lat,lon,tlat,tlon)
 }
-
-function stopTracking(){ clearInterval(tracking) }
-
-function update(){
-let A=+na.value,B=+ea.value,R=+radius.value
-let t=points[currentIndex]
-
-let dx=t.e-A,dy=t.n-B
-let dist=Math.sqrt(dx*dx+dy*dy)
-
-if(dist<R){
-currentIndex++
-if(currentIndex>=points.length){
-output.innerHTML="SELESAI"
-stopTracking()
-return
-}
-}
-
-output.innerHTML=`Target ${currentIndex+1}<br>Jarak ${dist.toFixed(2)}`
-draw(A,B,t.e,t.n,R)
-}
-
-// ================= MAP =================
-function draw(A,B,C,D,R){
-let ctx=map.getContext('2d')
-ctx.clearRect(0,0,450,300)
-
-let s=2
-let x1=225,y1=150
-let x2=225+(C-A)*s
-let y2=150-(D-B)*s
-
-ctx.beginPath(); ctx.arc(x1,y1,5,0,2*Math.PI); ctx.fill()
-ctx.beginPath(); ctx.arc(x2,y2,5,0,2*Math.PI); ctx.fill()
-ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke()
-ctx.beginPath(); ctx.arc(x2,y2,R*s,0,2*Math.PI); ctx.stroke()
-}
-
-renderForm()
-
 </script>
+
 </body>
 </html>
