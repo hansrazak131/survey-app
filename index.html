@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Survey App PRO</title>
+
+<style>
+body {
+    font-family: Arial;
+    background:#020617;
+    color:#00ffcc;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+}
+.container {
+    background:#000;
+    padding:20px;
+    border-radius:12px;
+    width:520px;
+    box-shadow:0 0 25px #00ffcc;
+}
+h2 {text-align:center;}
+select,input,button {
+    width:100%;
+    padding:10px;
+    margin:5px 0;
+    border-radius:6px;
+    border:none;
+}
+input {
+    background:#020617;
+    color:#00ffcc;
+    border:1px solid #00ffcc;
+}
+button {
+    background:#00ffcc;
+    color:#000;
+    font-weight:bold;
+    cursor:pointer;
+}
+.result {
+    margin-top:10px;
+    padding:10px;
+    border:1px solid #00ffcc;
+}
+canvas {
+    background:#001018;
+    margin-top:10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<h2>SURVEY APP PRO</h2>
+
+<input type="file" id="file" accept=".csv">
+<button onclick="loadCSV()">IMPORT CSV</button>
+
+<select id="menu" onchange="renderForm()">
+<option value="1">Jarak & Azimuth</option>
+<option value="2">Koordinat (REC)</option>
+<option value="5">Sudut Segitiga</option>
+<option value="6">Resection</option>
+<option value="7">Offside</option>
+<option value="8">Pancang Laut</option>
+<option value="9">Navigasi Single</option>
+<option value="10">Navigasi Multi</option>
+</select>
+
+<div id="form"></div>
+
+<button onclick="hitung()">HITUNG</button>
+<button onclick="startTracking()">START</button>
+<button onclick="stopTracking()">STOP</button>
+
+<div class="result" id="output"></div>
+<canvas id="map" width="450" height="300"></canvas>
+
+</div>
+
+<script>
+
+// ================= BASIC =================
+function degToRad(d){ return d*Math.PI/180 }
+function radToDeg(r){ return r*180/Math.PI }
+
+// ================= CSV =================
+let points=[], currentIndex=0, tracking=null
+
+function loadCSV(){
+let file=document.getElementById('file').files[0]
+let reader=new FileReader()
+reader.onload=e=>{
+let lines=e.target.result.split("\n")
+points=[]
+for(let i=1;i<lines.length;i++){
+let [n,e]=lines[i].split(",")
+if(n && e) points.push({n:+n, e:+e})
+}
+alert("Loaded "+points.length+" titik")
+}
+reader.readAsText(file)
+}
+
+// ================= FORM =================
+function renderForm(){
+let m=menu.value
+if(m==1) form.innerHTML=`<input id=x1 placeholder="E1"><input id=y1 placeholder="N1"><input id=x2 placeholder="E2"><input id=y2 placeholder="N2">`
+if(m==2) form.innerHTML=`<input id=jarak placeholder="Jarak"><input id=az placeholder="Azimuth">`
+if(m==5) form.innerHTML=`<input id=a placeholder="Left"><input id=b placeholder="Right"><input id=c placeholder="Front">`
+if(m==6) form.innerHTML=`<input id=e1><input id=n1><input id=e2><input id=n2><input id=d1><input id=d2>`
+if(m==7) form.innerHTML=`<input id=az><input id=ch><input id=of>`
+if(m==8) form.innerHTML=`<input id=na><input id=ea><input id=nt><input id=et><input id=radius>`
+if(m==9 || m==10) form.innerHTML=`<input id=na><input id=ea><input id=nt><input id=et><input id=radius>`
+}
+
+// ================= HITUNG =================
+function hitung(){
+let m=menu.value
+
+if(m==1){
+let dx=x2.value-x1.value
+let dy=y2.value-y1.value
+let d=Math.sqrt(dx*dx+dy*dy)
+let az=radToDeg(Math.atan2(dx,dy))
+if(az<0) az+=360
+output.innerHTML=`Jarak ${d.toFixed(3)} m<br>Azimuth ${az.toFixed(3)}°`
+}
+
+if(m==2){
+let d=jarak.value
+let az=document.getElementById('az').value
+let dx=d*Math.sin(degToRad(az))
+let dy=d*Math.cos(degToRad(az))
+output.innerHTML=`ΔE ${dx.toFixed(3)}<br>ΔN ${dy.toFixed(3)}`
+}
+
+if(m==5){
+let A=a.value,B=b.value,C=c.value
+let ang=Math.acos((A*A+B*B-C*C)/(2*A*B))
+output.innerHTML=`Sudut ${radToDeg(ang).toFixed(3)}°`
+}
+
+if(m==6){
+let A=e1.value,B=n1.value,C=e2.value,D=n2.value,E=d1.value,F=d2.value
+let dx=C-A,dy=D-B
+let G=Math.sqrt(dx*dx+dy*dy)
+let az=radToDeg(Math.atan2(dx,dy))
+let H=Math.acos((G*G+E*E-F*F)/(2*G*E))
+let I=az+radToDeg(H)
+let dx2=E*Math.sin(degToRad(I))
+let dy2=E*Math.cos(degToRad(I))
+output.innerHTML=`E3 ${(A+dx2).toFixed(3)}<br>N3 ${(B+dy2).toFixed(3)}`
+}
+
+if(m==7){
+let azv=az.value,d=ch.value,ofv=of.value
+let ang=Math.atan(ofv/d)
+let dist=Math.sqrt(d*d+ofv*ofv)
+let dx=dist*Math.sin(degToRad(azv)+ang)
+let dy=dist*Math.cos(degToRad(azv)+ang)
+output.innerHTML=`ΔE ${dx.toFixed(3)}<br>ΔN ${dy.toFixed(3)}`
+}
+
+if(m==8){
+output.innerHTML=`ΔN ${nt.value-na.value}<br>ΔE ${et.value-ea.value}`
+}
+
+if(m==9){
+navSingle()
+}
+}
+
+// ================= NAVIGASI =================
+function navSingle(){
+let A=+na.value,B=+ea.value,C=+nt.value,D=+et.value,R=+radius.value
+let dx=C-A,dy=D-B
+let dist=Math.sqrt(dx*dx+dy*dy)
+let az=radToDeg(Math.atan2(dx,dy))
+output.innerHTML=`Jarak ${dist.toFixed(3)} m<br>AZ ${az.toFixed(3)}°`
+draw(A,B,C,D,R)
+}
+
+// ================= TRACKING =================
+function startTracking(){
+if(points.length==0){alert("Import CSV dulu"); return}
+tracking=setInterval(update,1000)
+}
+
+function stopTracking(){ clearInterval(tracking) }
+
+function update(){
+let A=+na.value,B=+ea.value,R=+radius.value
+let t=points[currentIndex]
+
+let dx=t.e-A,dy=t.n-B
+let dist=Math.sqrt(dx*dx+dy*dy)
+
+if(dist<R){
+currentIndex++
+if(currentIndex>=points.length){
+output.innerHTML="SELESAI"
+stopTracking()
+return
+}
+}
+
+output.innerHTML=`Target ${currentIndex+1}<br>Jarak ${dist.toFixed(2)}`
+draw(A,B,t.e,t.n,R)
+}
+
+// ================= MAP =================
+function draw(A,B,C,D,R){
+let ctx=map.getContext('2d')
+ctx.clearRect(0,0,450,300)
+
+let s=2
+let x1=225,y1=150
+let x2=225+(C-A)*s
+let y2=150-(D-B)*s
+
+ctx.beginPath(); ctx.arc(x1,y1,5,0,2*Math.PI); ctx.fill()
+ctx.beginPath(); ctx.arc(x2,y2,5,0,2*Math.PI); ctx.fill()
+ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke()
+ctx.beginPath(); ctx.arc(x2,y2,R*s,0,2*Math.PI); ctx.stroke()
+}
+
+renderForm()
+
+</script>
+</body>
+</html>
